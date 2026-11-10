@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 import secrets
 import sqlite3
+import re
 from functools import wraps
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -13,6 +15,7 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SCMC_SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["MAX_CONTENT_LENGTH"] = 3 * 1024 * 1024
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -76,7 +79,32 @@ CREATE TABLE IF NOT EXISTS ticket_responses (
   response TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS catalog_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL,
+  value TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(kind,value)
+);
+CREATE TABLE IF NOT EXISTS appearance_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
 """
+
+CATALOGS = {
+    "types": ("Tipos de equipamento", "equipment", "category"),
+    "brands": ("Marcas", "equipment", "brand"),
+    "models": ("Modelos", "equipment", "model"),
+    "sectors": ("Setores", "users", "sector"),
+}
+DEFAULT_APPEARANCE = {
+    "primary": "#4263eb", "accent": "#31d4e4", "background": "#f5f7fb",
+    "sidebar": "#101b2b", "sidebar_text": "#d5deea", "surface": "#ffffff",
+    "text": "#172638", "muted": "#718096", "border": "#e7edf4",
+    "success": "#11936f", "warning": "#d99618", "danger": "#d64545",
+    "logo": "", "banner": "",
+}
 
 def get_db():
     if "db" not in g:
@@ -138,6 +166,13 @@ def init_db():
     for name in ("serial", "description"):
         if name not in equipment_columns:
             db.execute(f"ALTER TABLE equipment ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+    for kind, (_, table, column) in CATALOGS.items():
+        for row in db.execute(f"SELECT DISTINCT {column} FROM {table} WHERE trim({column})!=''"):
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES(?,?)", (kind, row[0]))
+    for row in db.execute("SELECT DISTINCT location FROM equipment WHERE trim(location)!=''"):
+        db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (row[0],))
+    for key, value in DEFAULT_APPEARANCE.items():
+        db.execute("INSERT OR IGNORE INTO appearance_settings(key,value) VALUES(?,?)", (key, value))
     db.commit()
     db.close()
 
@@ -183,7 +218,10 @@ def load_logged_in_user():
 
 @app.context_processor
 def inject_current_user():
-    return {"current_user": g.user}
+    appearance = dict(DEFAULT_APPEARANCE)
+    if g.user:
+        appearance.update(dict(get_db().execute("SELECT key,value FROM appearance_settings")))
+    return {"current_user": g.user, "appearance": appearance}
 
 def password_pair_valid(password, confirmation):
     if len(password) < 8:
@@ -225,6 +263,7 @@ def setup():
             password_pair_valid(password, request.form.get("confirm_password", ""))
             db = get_db()
             email = v["email"].lower()
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (v["sector"],))
             existing = db.execute("SELECT id FROM users WHERE lower(email)=?", (email,)).fetchone()
             if existing:
                 db.execute("UPDATE users SET name=?,password_hash=?,job_title=?,sector=?,phone=?,extension=?,role='Administrador',active=1 WHERE id=?",
@@ -255,6 +294,7 @@ def register():
             password = request.form.get("password", "")
             password_pair_valid(password, request.form.get("confirm_password", ""))
             db = get_db()
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (v["sector"],))
             db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,'Solicitante')",
                        (v["name"], v["email"].lower(), generate_password_hash(password), v["job_title"], v["sector"], v["phone"], v["extension"]))
             db.commit()
@@ -314,14 +354,139 @@ def index():
     }
     latest = db.execute("""SELECT o.*, e.asset_tag, u.name requester FROM service_orders o
       JOIN equipment e ON e.id=o.equipment_id JOIN users u ON u.id=o.requester_id
-      WHERE 1=1""" + requester_filter + " ORDER BY o.id DESC LIMIT 6", query_args).fetchall()
-    return render_template("index.html", stats=stats, latest=latest)
+      WHERE o.status NOT IN ('Concluída','Cancelada')""" + requester_filter + " ORDER BY o.id DESC LIMIT 6", query_args).fetchall()
+    activity = db.execute("SELECT * FROM activity_log ORDER BY id DESC LIMIT 8").fetchall() if g.user["role"] == "Administrador" else []
+    return render_template("index.html", stats=stats, latest=latest, activity=activity)
+
+@app.get("/activity")
+@admin_required
+def activity_log_view():
+    q = request.args.get("q", "").strip()
+    rows = get_db().execute("SELECT * FROM activity_log WHERE actor_name LIKE ? OR action LIKE ? OR entity LIKE ? OR details LIKE ? ORDER BY id DESC LIMIT 250", tuple([f"%{q}%"]*4)).fetchall()
+    return render_template("activity.html", rows=rows, q=q)
+
+@app.get("/admin")
+@admin_required
+def admin():
+    db = get_db()
+    catalogs = {}
+    for kind, (label, _, _) in CATALOGS.items():
+        catalogs[kind] = {"label": label, "rows": db.execute(
+            "SELECT * FROM catalog_items WHERE kind=? ORDER BY value COLLATE NOCASE", (kind,)
+        ).fetchall()}
+    return render_template("admin.html", catalogs=catalogs)
+
+def catalog_label(kind):
+    if kind not in CATALOGS:
+        abort(404)
+    return CATALOGS[kind]
+
+@app.post("/admin/catalog/<kind>/create")
+@admin_required
+def catalog_create(kind):
+    label, _, _ = catalog_label(kind)
+    value = request.form.get("value", "").strip()
+    if not value:
+        flash("Informe o nome do cadastro.", "error")
+    else:
+        try:
+            db = get_db()
+            cur = db.execute("INSERT INTO catalog_items(kind,value) VALUES(?,?)", (kind, value))
+            db.commit()
+            log_activity("Cadastro de opção", label, cur.lastrowid, value)
+            flash(f"Opção adicionada em {label}.", "success")
+        except sqlite3.IntegrityError:
+            flash("Essa opção já existe no cadastro.", "error")
+    return redirect(url_for("admin"))
+
+@app.post("/admin/catalog/<kind>/<int:item_id>/edit")
+@admin_required
+def catalog_edit(kind, item_id):
+    label, table, column = catalog_label(kind)
+    value = request.form.get("value", "").strip()
+    if not value:
+        flash("Informe o nome do cadastro.", "error")
+        return redirect(url_for("admin"))
+    db = get_db()
+    old = db.execute("SELECT value FROM catalog_items WHERE id=? AND kind=?", (item_id, kind)).fetchone()
+    if old is None:
+        abort(404)
+    try:
+        db.execute("UPDATE catalog_items SET value=? WHERE id=? AND kind=?", (value, item_id, kind))
+        db.execute(f"UPDATE {table} SET {column}=? WHERE {column}=?", (value, old["value"]))
+        if kind == "sectors":
+            db.execute("UPDATE equipment SET location=? WHERE location=?", (value, old["value"]))
+        db.commit()
+        log_activity("Edição de opção", label, item_id, f"{old['value']} → {value}")
+        flash("Cadastro atualizado; os registros vinculados também foram atualizados.", "success")
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash("Essa opção já existe no cadastro.", "error")
+    return redirect(url_for("admin"))
+
+@app.post("/admin/catalog/<kind>/<int:item_id>/delete")
+@admin_required
+def catalog_delete(kind, item_id):
+    label, table, column = catalog_label(kind)
+    db = get_db()
+    row = db.execute("SELECT value FROM catalog_items WHERE id=? AND kind=?", (item_id, kind)).fetchone()
+    if row is None:
+        abort(404)
+    usage = db.execute(f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (row["value"],)).fetchone()[0]
+    if kind == "sectors":
+        usage += db.execute("SELECT COUNT(*) FROM equipment WHERE location=?", (row["value"],)).fetchone()[0]
+    if usage:
+        flash(f"Não é possível excluir: {usage} cadastro(s) ainda usam essa opção. Edite os registros ou altere o valor primeiro.", "error")
+    else:
+        db.execute("DELETE FROM catalog_items WHERE id=? AND kind=?", (item_id, kind))
+        db.commit()
+        log_activity("Exclusão de opção", label, item_id, row["value"])
+        flash("Opção excluída.", "success")
+    return redirect(url_for("admin"))
+
+@app.post("/admin/appearance")
+@admin_required
+def appearance_save():
+    db = get_db()
+    try:
+        values = {}
+        for key in DEFAULT_APPEARANCE:
+            if key in ("logo", "banner"):
+                continue
+            value = request.form.get(key, DEFAULT_APPEARANCE[key]).strip()
+            if not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+                raise ValueError("Escolha cores válidas para todos os campos.")
+            values[key] = value
+        upload_dir = BASE_DIR / "static" / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        for key in ("logo", "banner"):
+            uploaded = request.files.get(key)
+            if uploaded and uploaded.filename:
+                ext = Path(secure_filename(uploaded.filename)).suffix.lower()
+                allowed = {".png", ".jpg", ".jpeg", ".webp"}
+                if ext not in allowed:
+                    raise ValueError("Use imagens PNG, JPG ou WebP para o logo e o banner.")
+                filename = f"{key}-{secrets.token_hex(10)}{ext}"
+                uploaded.save(upload_dir / filename)
+                values[key] = filename
+            elif request.form.get(f"remove_{key}") == "1":
+                values[key] = ""
+            else:
+                values[key] = dict(db.execute("SELECT key,value FROM appearance_settings")).get(key, "")
+        db.executemany("INSERT INTO appearance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", values.items())
+        db.commit()
+        log_activity("Atualização da aparência", "Sistema", "Cyrex", "Cores, logotipo ou banner atualizados")
+        flash("Aparência salva.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("admin"))
 
 @app.route("/users")
 @admin_required
 def users():
-    rows = get_db().execute("SELECT * FROM users ORDER BY active DESC, name").fetchall()
-    return render_template("users.html", rows=rows)
+    q = request.args.get("q", "").strip()
+    rows = get_db().execute("SELECT * FROM users WHERE name LIKE ? OR email LIKE ? OR sector LIKE ? OR role LIKE ? ORDER BY active DESC, name", tuple([f"%{q}%"]*4)).fetchall()
+    return render_template("users.html", rows=rows, q=q)
 
 @app.route("/users/new", methods=["GET","POST"])
 @admin_required
@@ -332,7 +497,7 @@ def user_new():
             if v["role"] not in ("Administrador","Técnico","Solicitante"): raise ValueError("Perfil inválido.")
             password=request.form.get("password", "")
             password_pair_valid(password, request.form.get("confirm_password", ""))
-            db=get_db(); cur=db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,?)",(v["name"],v["email"].lower(),generate_password_hash(password),v["job_title"],v["sector"],v["phone"],v["extension"],v["role"]))
+            db=get_db(); db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)",(v["sector"],)); cur=db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,?)",(v["name"],v["email"].lower(),generate_password_hash(password),v["job_title"],v["sector"],v["phone"],v["extension"],v["role"]))
             db.commit(); log_activity("Cadastro de pessoa", "Pessoa", cur.lastrowid, f"Perfil: {v['role']} · Setor: {v['sector']}"); flash("Usuário cadastrado.","success"); return redirect(url_for("users"))
         except (ValueError, sqlite3.IntegrityError) as e: flash(str(e) if isinstance(e,ValueError) else "Esse e-mail já está cadastrado.","error")
     return render_template("user_form.html", row=None)
@@ -351,6 +516,7 @@ def user_edit(item_id):
             if target and target["role"]=="Administrador" and target["active"] and v["role"]!="Administrador" and get_db().execute("SELECT COUNT(*) FROM users WHERE role='Administrador' AND active=1").fetchone()[0]<=1:
                 raise ValueError("Mantenha pelo menos um administrador ativo.")
             db=get_db(); password=request.form.get("password", "")
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)",(v["sector"],))
             if password:
                 password_pair_valid(password, request.form.get("confirm_password", ""))
                 db.execute("UPDATE users SET name=?,email=?,job_title=?,sector=?,phone=?,extension=?,role=?,active=?,password_hash=? WHERE id=?",(v["name"],v["email"].lower(),v["job_title"],v["sector"],v["phone"],v["extension"],v["role"],int(request.form.get("active")=="1"),generate_password_hash(password),item_id))
@@ -381,9 +547,24 @@ def user_delete(item_id):
 
 @app.route("/equipment")
 def equipment():
-    query="SELECT * FROM equipment" + (" WHERE status!='Inativo'" if g.user["role"] == "Solicitante" else "") + " ORDER BY id DESC"
-    rows=get_db().execute(query).fetchall()
-    return render_template("equipment.html",rows=rows)
+    q=request.args.get("q", "").strip()
+    query="SELECT * FROM equipment WHERE (asset_tag LIKE ? OR category LIKE ? OR brand LIKE ? OR model LIKE ? OR location LIKE ? OR serial LIKE ?)"
+    args=[f"%{q}%"]*6
+    if g.user["role"] == "Solicitante": query += " AND status!='Inativo'"
+    query += " ORDER BY id DESC"
+    rows=get_db().execute(query,args).fetchall()
+    return render_template("equipment.html",rows=rows,q=q)
+
+def equipment_catalogs():
+    db = get_db()
+    return {kind: db.execute("SELECT value FROM catalog_items WHERE kind=? ORDER BY value COLLATE NOCASE", (kind,)).fetchall()
+            for kind in ("types", "brands", "models", "sectors")}
+
+def validate_equipment_catalogs(values):
+    db = get_db()
+    for field, kind in (("category", "types"), ("brand", "brands"), ("model", "models"), ("location", "sectors")):
+        if not db.execute("SELECT 1 FROM catalog_items WHERE kind=? AND value=?", (kind, values[field])).fetchone():
+            raise ValueError("Selecione tipo, marca, modelo e setor cadastrados no painel Admin.")
 
 @app.route("/equipment/new",methods=["GET","POST"])
 @admin_required
@@ -391,12 +572,13 @@ def equipment_new():
     if request.method=="POST":
         try:
             v=form_required("asset_tag","category","brand","model","location")
+            validate_equipment_catalogs(v)
             v["serial"]=request.form.get("serial","").strip()
             v["description"]=request.form.get("description","").strip()
             db=get_db(); cur=db.execute("INSERT INTO equipment(asset_tag,category,brand,model,location,serial,description) VALUES(?,?,?,?,?,?,?)",tuple(v.values())); db.commit(); log_activity("Cadastro de equipamento", "Equipamento", cur.lastrowid, f"Patrimônio: {v['asset_tag']} · Setor: {v['location']}")
             flash("Equipamento cadastrado.","success"); return redirect(url_for("equipment"))
         except (ValueError,sqlite3.IntegrityError) as e: flash(str(e) if isinstance(e,ValueError) else "Patrimônio já cadastrado.","error")
-    return render_template("equipment_form.html",row=None)
+    return render_template("equipment_form.html",row=None,catalogs=equipment_catalogs())
 
 @app.route("/equipment/<int:item_id>/edit",methods=["GET","POST"])
 @admin_required
@@ -405,6 +587,7 @@ def equipment_edit(item_id):
     if request.method=="POST":
         try:
             v=form_required("asset_tag","category","brand","model","location")
+            validate_equipment_catalogs(v)
             v["serial"]=request.form.get("serial","").strip()
             v["description"]=request.form.get("description","").strip()
             status=request.form.get("status","Ativo")
@@ -413,7 +596,7 @@ def equipment_edit(item_id):
             flash("Equipamento atualizado.","success"); return redirect(url_for("equipment"))
         except (ValueError,sqlite3.IntegrityError) as e: flash(str(e) if isinstance(e,ValueError) else "Patrimônio já cadastrado.","error")
         row=get_or_404("equipment",item_id)
-    return render_template("equipment_form.html",row=row)
+    return render_template("equipment_form.html",row=row,catalogs=equipment_catalogs())
 
 @app.post("/equipment/<int:item_id>/delete")
 @admin_required

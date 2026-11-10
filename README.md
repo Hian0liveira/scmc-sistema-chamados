@@ -30,7 +30,8 @@ Acesse http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Ad
 - Técnico atende chamados; Administrador gerencia pessoas e equipamentos e tem acesso total.
 - Chamados abertos por Solicitante usam a identidade autenticada e só podem associar equipamento ativo do mesmo setor.
 - Pessoas são inativadas para preservar chamados antigos.
-- Equipamentos incluem patrimônio, tipo, marca, modelo, setor/localização, número de série e descrição opcional.
+- Equipamentos incluem patrimônio, tipo, marca, modelo, setor/localização, número de série e descrição opcional; tipo, marca, modelo e setor são escolhidos dos cadastros do painel Admin.
+- Painel Admin com gerenciamento dos quatro cadastros, personalização de logo, banner e cores e pesquisa em chamados, equipamentos e pessoas.
 - Chamados mantêm status, prioridade, solução, respostas e histórico de atividade.
 
 ## Prévia visual do site

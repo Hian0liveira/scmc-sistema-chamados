@@ -5,3 +5,40 @@
 .account-menu{position:relative}.account-trigger{list-style:none;display:flex;align-items:center;gap:11px;padding:7px 9px;border:1px solid transparent;border-radius:11px;cursor:pointer;user-select:none;transition:background .18s,border-color .18s}.account-trigger::-webkit-details-marker{display:none}.account-trigger:hover,.account-menu[open] .account-trigger{background:#f5f7ff;border-color:#e4e9fc}.account-trigger:focus-visible{outline:3px solid #a3b2ff;outline-offset:3px}.account-chevron{color:#8b97a6;transition:transform .18s}.account-menu[open] .account-chevron{transform:rotate(180deg)}.account-panel{position:absolute;right:0;top:calc(100% + 12px);width:290px;max-width:calc(100vw - 32px);padding:8px;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 18px 50px #152b4929;z-index:10;animation:account-appear .15s ease-out}.account-heading{padding:13px 13px 15px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.account-heading strong,.account-heading span{display:block}.account-heading strong{font-size:13px;color:var(--ink)}.account-heading span{font-size:11px;color:var(--muted);margin-top:5px}.account-heading small{display:inline-block;margin-top:9px;padding:4px 8px;border-radius:6px;background:#edf1ff;color:#4a61cf;font-size:10px;font-weight:700}.account-section-label{padding:15px 13px 6px;color:#929eae;font-size:9px;font-weight:800;letter-spacing:1.1px}.account-panel nav{display:grid;gap:2px}.account-panel nav a,.account-logout button{display:flex;align-items:center;gap:11px;width:100%;padding:11px 13px;border-radius:8px;font:600 12px 'DM Sans',sans-serif;text-decoration:none;color:#4c5b70;background:transparent;border:0;text-align:left;cursor:pointer}.account-panel nav a span{display:grid;place-items:center;width:18px;font-size:18px;color:#7182a4}.account-panel nav a:hover,.account-panel nav a:focus-visible{background:#f0f3ff;color:#3654d4}.account-logout{margin:8px 0 0;padding-top:8px;border-top:1px solid var(--line)}.account-logout button{color:#b43c3c}.account-logout button:hover,.account-logout button:focus-visible{background:#fff0ef}.account-panel a:focus-visible,.account-logout button:focus-visible{outline:2px solid #94a7ff;outline-offset:-2px}@keyframes account-appear{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}@media(max-width:650px){.account-trigger{gap:7px;padding:4px}.account-panel{top:calc(100% + 9px)}.account-panel .account-heading strong{display:block}}@media(prefers-reduced-motion:reduce){.account-panel{animation:none}.account-chevron{transition:none}}
 
 .activity-entry{border-left:3px solid var(--accent,#536dfe);background:#f7f8fc;border-radius:0 10px 10px 0;padding:14px 16px;margin:12px 0}.activity-entry p{margin:6px 0;white-space:pre-wrap}.activity-entry small{color:#718096}
+
+/* Painel administrativo, pesquisa local e aparência configurável */
+body{background:var(--paper);color:var(--ink)}
+.sidebar{background:var(--sidebar);color:var(--sidebar-text)}
+.side-nav a{color:var(--sidebar-text)}
+.topbar,.card,.stat{background:var(--surface)}
+.brand-mark{background:linear-gradient(140deg,var(--blue),var(--accent));box-shadow:0 6px 16px color-mix(in srgb,var(--blue) 35%,transparent)}
+.side-nav a.active{box-shadow:inset 3px 0 var(--accent)}
+.link,.text-link,.eyebrow.dark{color:var(--blue)}
+.btn.primary{background:var(--blue);border-color:var(--blue)}
+.btn.danger{color:var(--danger)}
+.brand-mark img{width:100%;height:100%;object-fit:contain;border-radius:inherit}
+.function-search-row{display:flex;gap:10px;max-width:760px;margin:0 0 14px auto}
+.function-search{flex:1;min-width:180px;border:1px solid var(--line);border-radius:8px;padding:10px 13px;font:500 12px 'DM Sans',sans-serif;color:var(--ink);background:var(--surface)}
+.admin-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.admin-catalog-card{padding:20px;min-width:0}
+.admin-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+.admin-card-head h2{display:inline-block;vertical-align:middle;font:800 16px Manrope,sans-serif;margin:0 0 0 10px}
+.admin-card-head p{color:var(--muted);font-size:11px;margin:5px 0 0 43px}
+.admin-icon{display:inline-grid;place-items:center;width:33px;height:33px;border-radius:9px;background:color-mix(in srgb,var(--blue) 11%,white);color:var(--blue);font-size:17px}
+.catalog-add,.catalog-row,.catalog-row form{display:flex;align-items:center;gap:8px}
+.catalog-add{margin-bottom:12px}
+.catalog-add input,.catalog-row input{min-width:0;flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:var(--surface);color:var(--ink);font:500 12px 'DM Sans',sans-serif}
+.catalog-list{display:grid;gap:7px;max-height:260px;overflow:auto}
+.catalog-row{padding:7px 0;border-top:1px solid var(--line)}.catalog-row form:first-child{flex:1;min-width:0}
+.empty.compact{padding:15px;margin:0}
+.appearance-heading{margin-top:30px}.appearance-form{max-width:none}
+.appearance-file-grid,.appearance-color-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.appearance-file-grid>label,.appearance-color-grid>label{display:block;font-size:11px;font-weight:700;color:var(--muted)}
+.appearance-file-grid input[type=file]{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--surface);color:var(--ink)}
+.appearance-color-grid{margin-top:20px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.appearance-color-grid input{display:block;width:100%;height:42px;margin-top:7px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.current-asset{display:flex;align-items:center;gap:10px;margin:10px 0;color:var(--muted);font-size:11px}.current-asset img{width:46px;height:38px;object-fit:contain;border:1px solid var(--line);border-radius:7px}.current-asset.banner-asset img{width:100px}
+.appearance-file-grid .check{display:flex;align-items:center;gap:8px;margin-top:8px}
+.admin-note{padding:12px;border-radius:8px;background:#fff8e7;color:#775b17;font-size:12px}.admin-note a{color:var(--blue);font-weight:700}
+@media(max-width:800px){.admin-card-grid{grid-template-columns:1fr}.appearance-color-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.function-search-row{width:100%;margin:0 0 12px}.function-search-row .btn{padding:9px}.appearance-file-grid,.appearance-color-grid{grid-template-columns:1fr}.admin-catalog-card{padding:15px}.catalog-row{align-items:stretch;flex-wrap:wrap}.catalog-row form:first-child{min-width:100%}}

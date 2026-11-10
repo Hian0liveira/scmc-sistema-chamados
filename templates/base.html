@@ -7,16 +7,18 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
 </head>
-<body>
+<body style="--blue:{{ appearance.primary }};--accent:{{ appearance.accent }};--paper:{{ appearance.background }};--sidebar:{{ appearance.sidebar }};--sidebar-text:{{ appearance.sidebar_text }};--surface:{{ appearance.surface }};--ink:{{ appearance.text }};--muted:{{ appearance.muted }};--line:{{ appearance.border }};--green:{{ appearance.success }};--warning:{{ appearance.warning }};--danger:{{ appearance.danger }}">
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">S</span><span>Cyrex<small>Suporte</small></span></a>
+    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">{% if appearance.logo %}<img src="{{ url_for('static',filename='uploads/'+appearance.logo) }}" alt="Logo Cyrex">{% else %}C{% endif %}</span><span>Cyrex<small>Suporte</small></span></a>
     <div class="side-label">ESPAÇO DE TRABALHO</div>
     <nav class="side-nav">
       <a class="{% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}"><span class="nav-icon">⌂</span> Visão geral</a>
       <a class="{% if request.endpoint in ['orders','order_new','order_edit','order_detail','order_close'] %}active{% endif %}" href="{{ url_for('orders') }}"><span class="nav-icon">▤</span> Chamados</a>
       <a class="{% if request.endpoint in ['equipment','equipment_new','equipment_edit'] %}active{% endif %}" href="{{ url_for('equipment') }}"><span class="nav-icon">▣</span> Equipamentos</a>
       {% if current_user.role == 'Administrador' %}<a class="{% if request.endpoint in ['users','user_new','user_edit'] %}active{% endif %}" href="{{ url_for('users') }}"><span class="nav-icon">♙</span> Pessoas</a>{% endif %}
+      {% if current_user.role == 'Administrador' %}<a class="{% if request.endpoint in ['admin','catalog_create','catalog_edit','catalog_delete','appearance_save'] %}active{% endif %}" href="{{ url_for('admin') }}"><span class="nav-icon">⚙</span> Admin</a>{% endif %}
+      {% if current_user.role == 'Administrador' %}<a class="{% if request.endpoint == 'activity_log_view' %}active{% endif %}" href="{{ url_for('activity_log_view') }}"><span class="nav-icon">◷</span> Auditoria</a>{% endif %}
     </nav>
     <div class="sidebar-bottom"><div class="status-dot"></div><div><strong>SCMC ativo</strong><small>Ambiente local</small></div></div>
   </aside>
@@ -36,6 +38,8 @@
             <a href="{{ url_for('orders') }}"><span aria-hidden="true">▤</span>{{ 'Todos os chamados' if current_user.role != 'Solicitante' else 'Meus chamados' }}</a>
             <a href="{{ url_for('equipment') }}"><span aria-hidden="true">▣</span>Equipamentos</a>
             {% if current_user.role == 'Administrador' %}<a href="{{ url_for('users') }}"><span aria-hidden="true">♙</span>Gerenciar pessoas</a>{% endif %}
+            {% if current_user.role == 'Administrador' %}<a href="{{ url_for('admin') }}"><span aria-hidden="true">⚙</span>Administração</a>{% endif %}
+            {% if current_user.role == 'Administrador' %}<a href="{{ url_for('activity_log_view') }}"><span aria-hidden="true">◷</span>Histórico de atividades</a>{% endif %}
           </nav>
           <form class="account-logout" method="post" action="{{ url_for('logout') }}"><button type="submit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 5H5v14h4M14 8l4 4-4 4M9 12h10"/></svg>Sair da conta</button></form>
         </div>
