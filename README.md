@@ -1,35 +1,53 @@
-# SCMC — Sistema de Controle de Chamados de Manutenção de Computadores
+# Cyrex – Suporte (SCMC)
 
-Aplicação web acadêmica para registrar equipamentos e acompanhar ordens de serviço. Stack: Python, Flask, SQLite, HTML e CSS.
+Sistema web de controle de chamados e inventário de TI. Implementado em Python, Flask, SQLite, HTML, CSS e JavaScript.
 
 ## Requisitos
-- Python 3.10 ou superior
 
-## Executar localmente
-```bash
+- Python 3.10 ou superior
+- Pip
+
+## Executar no Windows PowerShell
+
+```powershell
 python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-# Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python app.py
 ```
-Acesse http://127.0.0.1:5000. O arquivo SQLite `scmc.db` é criado automaticamente. Cadastre usuários e equipamentos antes de abrir ordens. A chave de sessão pode ser configurada pela variável de ambiente `SCMC_SECRET_KEY`; o valor padrão serve apenas para desenvolvimento local.
+
+Se o PowerShell bloquear a ativação do ambiente virtual, execute os comandos de instalação sem ativá-lo:
+
+```powershell
+python -m pip install -r requirements.txt
+python app.py
+```
+
+Abra http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Administrador. O arquivo de banco `scmc.db` é criado localmente e não deve ser enviado ao GitHub.
+
+## Perfis e cadastro
+
+- O cadastro público exige nome, e-mail, função/cargo, setor, telefone, ramal e senha. Ele cria exclusivamente o perfil Solicitante.
+- Somente um Administrador pode criar contas de Técnico e Administrador pela área Pessoas.
+- Técnicos atendem e atualizam chamados. Administradores têm acesso total e gerenciam pessoas e inventário.
+- Ao abrir chamado, o nome do solicitante vem da conta conectada. O seletor de equipamento mostra apenas equipamentos ativos do setor do solicitante, e o servidor valida essa associação.
+- Inativar uma pessoa preserva os chamados relacionados.
 
 ## Funcionalidades
-- CRUD de usuários com perfis de Técnico e Solicitante; cadastro relacionado não pode ser removido, mas pode ser inativado.
-- CRUD de equipamentos, com patrimônio único e inativação quando houver histórico.
-- CRUD de ordens de serviço, com pesquisa, filtros, prioridade, técnico e encerramento com solução.
-- Relacionamentos e chaves estrangeiras no SQLite.
 
-## Prévia Cyrex – Suporte
-A interface atual do Cyrex está em [cyrex-preview/index.html](cyrex-preview/index.html) e também está publicada em https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site. Essa prévia é um protótipo estático; os dados ficam no armazenamento local do navegador e não são compartilhados entre usuários.
+- Login, configuração inicial e senhas armazenadas com hash seguro.
+- CRUD de pessoas, equipamentos e chamados.
+- Campos de função, setor, telefone e ramal no cadastro de pessoas.
+- Pesquisa e filtros de chamados, prioridades, status, atribuição de técnico e encerramento com solução.
+- Banco SQLite com relacionamentos entre chamados, pessoas e equipamentos.
 
-No formulário de auto cadastro, todos os dados de pessoa são obrigatórios e o perfil criado é sempre Solicitante. Contas de Técnico e Administrador devem ser criadas por um Administrador, na área Pessoas.
+## Estrutura do projeto
 
-Acesso de demonstração: `admin@scmc.local` / `Cyrex2026!`.
+- `app.py`: rotas Flask, autenticação, regras de perfil e acesso ao SQLite.
+- `templates/`: telas HTML/Jinja.
+- `static/`: estilos e scripts do navegador.
+- `documentacao/` e `docs/`: documentação acadêmica e diagramas UML.
 
-## Estrutura
-`app.py` contém rotas e acesso ao SQLite; `templates/` contém páginas HTML; `static/` contém estilos; o banco é local e não deve ser versionado.
+## Configuração de segurança
 
-## Observação acadêmica
-Esta versão é um protótipo didático. Antes de publicar para uso real, configure uma chave secreta forte, autenticação e autorização, proteção CSRF, controle de acesso, cópias de segurança e implantação segura.
+Para manter as sessões após reiniciar, defina uma chave forte na variável `SCMC_SECRET_KEY`. A aplicação usa o servidor de desenvolvimento do Flask; para publicar, configure um servidor WSGI, HTTPS, proteção CSRF, limitação de tentativas de login e backups.
