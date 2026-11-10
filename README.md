@@ -21,6 +21,13 @@ Acesse http://127.0.0.1:5000. O arquivo SQLite `scmc.db` é criado automaticamen
 - CRUD de ordens de serviço, com pesquisa, filtros, prioridade, técnico e encerramento com solução.
 - Relacionamentos e chaves estrangeiras no SQLite.
 
+## Prévia Cyrex – Suporte
+A interface atual do Cyrex está em [cyrex-preview/index.html](cyrex-preview/index.html) e também está publicada em https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site. Essa prévia é um protótipo estático; os dados ficam no armazenamento local do navegador e não são compartilhados entre usuários.
+
+No formulário de auto cadastro, todos os dados de pessoa são obrigatórios e o perfil criado é sempre Solicitante. Contas de Técnico e Administrador devem ser criadas por um Administrador, na área Pessoas.
+
+Acesso de demonstração: `admin@scmc.local` / `Cyrex2026!`.
+
 ## Estrutura
 `app.py` contém rotas e acesso ao SQLite; `templates/` contém páginas HTML; `static/` contém estilos; o banco é local e não deve ser versionado.
 
