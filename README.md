@@ -1,53 +1,36 @@
-# Cyrex – Suporte (SCMC)
+# Cyrex – Suporte
 
-Sistema web de controle de chamados e inventário de TI. Implementado em Python, Flask, SQLite, HTML, CSS e JavaScript.
+Este pacote serve pelo Flask a mesma interface Cyrex da prévia web. A tela e as interações do sistema estão em `cyrex-preview/index.html`.
 
 ## Requisitos
 
 - Python 3.10 ou superior
-- Pip
+- Acesso à internet na primeira instalação das dependências
 
 ## Executar no Windows PowerShell
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python app.py
-```
-
-Se o PowerShell bloquear a ativação do ambiente virtual, execute os comandos de instalação sem ativá-lo:
+Abra o terminal do VS Code na pasta extraída e rode:
 
 ```powershell
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Abra http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Administrador. O arquivo de banco `scmc.db` é criado localmente e não deve ser enviado ao GitHub.
+Se `python` não estiver no PATH, use o caminho completo do executável, por exemplo:
 
-## Perfis e cadastro
+```powershell
+& 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' -m pip install -r requirements.txt
+& 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' app.py
+```
 
-- O cadastro público exige nome, e-mail, função/cargo, setor, telefone, ramal e senha. Ele cria exclusivamente o perfil Solicitante.
-- Somente um Administrador pode criar contas de Técnico e Administrador pela área Pessoas.
-- Técnicos atendem e atualizam chamados. Administradores têm acesso total e gerenciam pessoas e inventário.
-- Ao abrir chamado, o nome do solicitante vem da conta conectada. O seletor de equipamento mostra apenas equipamentos ativos do setor do solicitante, e o servidor valida essa associação.
-- Inativar uma pessoa preserva os chamados relacionados.
+Acesse http://127.0.0.1:5000.
 
-## Funcionalidades
+## Acesso inicial
 
-- Login, configuração inicial e senhas armazenadas com hash seguro.
-- CRUD de pessoas, equipamentos e chamados.
-- Campos de função, setor, telefone e ramal no cadastro de pessoas.
-- Pesquisa e filtros de chamados, prioridades, status, atribuição de técnico e encerramento com solução.
-- Banco SQLite com relacionamentos entre chamados, pessoas e equipamentos.
+A tela de login mostra o acesso de demonstração do administrador. Também é possível criar uma conta pelo botão **Criar cadastro de solicitante**. O cadastro público cria somente solicitantes; perfis de Técnico e Administrador são gerenciados pela área Pessoas.
 
-## Estrutura do projeto
+## Dados e funcionamento
 
-- `app.py`: rotas Flask, autenticação, regras de perfil e acesso ao SQLite.
-- `templates/`: telas HTML/Jinja.
-- `static/`: estilos e scripts do navegador.
-- `documentacao/` e `docs/`: documentação acadêmica e diagramas UML.
+Para manter a mesma implementação da prévia web, as interações e os dados desta versão são armazenados no armazenamento local do navegador. Eles não são compartilhados entre navegadores ou computadores. O Flask entrega a página; esta edição não configura banco de dados no servidor.
 
-## Configuração de segurança
-
-Para manter as sessões após reiniciar, defina uma chave forte na variável `SCMC_SECRET_KEY`. A aplicação usa o servidor de desenvolvimento do Flask; para publicar, configure um servidor WSGI, HTTPS, proteção CSRF, limitação de tentativas de login e backups.
+Prévia online: https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site
