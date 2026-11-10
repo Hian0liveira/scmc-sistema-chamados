@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Cyrex{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">S</span><span>Cyrex<small>Suporte</small></span></a>
+    <div class="side-label">ESPAÇO DE TRABALHO</div>
+    <nav class="side-nav">
+      <a class="{% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}"><span class="nav-icon">⌂</span> Visão geral</a>
+      <a class="{% if request.endpoint in ['orders','order_new','order_edit','order_detail','order_close'] %}active{% endif %}" href="{{ url_for('orders') }}"><span class="nav-icon">▤</span> Chamados</a>
+      <a class="{% if request.endpoint in ['equipment','equipment_new','equipment_edit'] %}active{% endif %}" href="{{ url_for('equipment') }}"><span class="nav-icon">▣</span> Equipamentos</a>
+      {% if current_user.role == 'Administrador' %}<a class="{% if request.endpoint in ['users','user_new','user_edit'] %}active{% endif %}" href="{{ url_for('users') }}"><span class="nav-icon">♙</span> Pessoas</a>{% endif %}
+    </nav>
+    <div class="sidebar-bottom"><div class="status-dot"></div><div><strong>SCMC ativo</strong><small>Ambiente local</small></div></div>
+  </aside>
+  <main class="main-area">
+    <header class="topbar"><div class="crumb">Workspace <span>/</span> <strong>{% block section %}Início{% endblock %}</strong></div><div class="top-actions"><span class="online"><i></i> Sistema operacional</span><details class="account-menu">
+        <summary class="account-trigger" aria-label="Abrir menu da conta" aria-expanded="false" aria-controls="account-panel">
+          <span class="account-label"><strong>{{ current_user.name }}</strong><small>{{ current_user.role }}</small></span>
+          <span class="avatar" aria-hidden="true">{{ current_user.name[0]|upper }}</span>
+          <svg class="account-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </summary>
+        <div class="account-panel" id="account-panel">
+          <div class="account-heading"><strong>{{ current_user.name }}</strong><span>{{ current_user.email }}</span><small>{{ current_user.role }}</small></div>
+          <div class="account-section-label">IR PARA</div>
+          <nav aria-label="Atalhos da conta">
+            <a href="{{ url_for('index') }}"><span aria-hidden="true">⌂</span>Visão geral</a>
+            {% if current_user.role != 'Técnico' %}<a href="{{ url_for('order_new') }}"><span aria-hidden="true">＋</span>Abrir chamado</a>{% endif %}
+            <a href="{{ url_for('orders') }}"><span aria-hidden="true">▤</span>{{ 'Todos os chamados' if current_user.role != 'Solicitante' else 'Meus chamados' }}</a>
+            <a href="{{ url_for('equipment') }}"><span aria-hidden="true">▣</span>Equipamentos</a>
+            {% if current_user.role == 'Administrador' %}<a href="{{ url_for('users') }}"><span aria-hidden="true">♙</span>Gerenciar pessoas</a>{% endif %}
+          </nav>
+          <form class="account-logout" method="post" action="{{ url_for('logout') }}"><button type="submit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 5H5v14h4M14 8l4 4-4 4M9 12h10"/></svg>Sair da conta</button></form>
+        </div>
+      </details></div></header>
+    <div class="page-content">
+      {% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="alert {{ category }}"><span>{{ '✓' if category=='success' else '!' }}</span>{{ message }}</div>{% endfor %}{% endwith %}
+      {% block content %}{% endblock %}
+      <footer class="footer">Cyrex <span>·</span> Central de suporte</footer>
+    </div>
+  </main>
+</div>
+<script src="{{ url_for('static',filename='account-menu.js') }}" defer></script>
+</body></html>

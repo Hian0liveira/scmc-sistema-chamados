@@ -1,36 +1,60 @@
 # Cyrex – Suporte
 
-Este pacote serve pelo Flask a mesma interface Cyrex da prévia web. A tela e as interações do sistema estão em `cyrex-preview/index.html`.
+Repositório completo do projeto acadêmico de controle de chamados e equipamentos. Contém a implementação Python/Flask com banco SQLite, a documentação e a prévia interativa Cyrex refinada durante o trabalho no site.
 
-## Requisitos
+## Executar a aplicação Flask com SQLite
 
-- Python 3.10 ou superior
-- Acesso à internet na primeira instalação das dependências
+Requisitos: Python 3.10 ou superior.
 
-## Executar no Windows PowerShell
-
-Abra o terminal do VS Code na pasta extraída e rode:
+No Windows PowerShell, na pasta do projeto:
 
 ```powershell
+python -m venv .venv
 python -m pip install -r requirements.txt
 python app.py
 ```
 
-Se `python` não estiver no PATH, use o caminho completo do executável, por exemplo:
+Se o comando `python` não apontar para a instalação correta, use o caminho completo do executável:
 
 ```powershell
 & 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' -m pip install -r requirements.txt
 & 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' app.py
 ```
 
-Acesse http://127.0.0.1:5000.
+Acesse http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Administrador. O banco SQLite `scmc.db` será criado localmente e não deve ser versionado.
 
-## Acesso inicial
+## Perfis e regras
 
-A tela de login mostra o acesso de demonstração do administrador. Também é possível criar uma conta pelo botão **Criar cadastro de solicitante**. O cadastro público cria somente solicitantes; perfis de Técnico e Administrador são gerenciados pela área Pessoas.
+- O cadastro público exige nome, e-mail, função/cargo, setor, telefone, ramal e senha; cria exclusivamente o perfil Solicitante.
+- Somente Administrador cria contas de Técnico e Administrador em Pessoas.
+- Técnico atende chamados; Administrador gerencia pessoas e equipamentos e tem acesso total.
+- Chamados abertos por Solicitante usam a identidade autenticada e só podem associar equipamento ativo do mesmo setor.
+- Pessoas são inativadas para preservar chamados antigos.
+- Equipamentos incluem patrimônio, tipo, marca, modelo, setor/localização, número de série e descrição opcional.
+- Chamados mantêm status, prioridade, solução, respostas e histórico de atividade.
 
-## Dados e funcionamento
+## Prévia visual do site
 
-Para manter a mesma implementação da prévia web, as interações e os dados desta versão são armazenados no armazenamento local do navegador. Eles não são compartilhados entre navegadores ou computadores. O Flask entrega a página; esta edição não configura banco de dados no servidor.
+`cyrex-preview/index.html` contém a interface interativa do site Cyrex trabalhada durante o desenvolvimento. Ela pode ser aberta no navegador e seus dados ficam no armazenamento local desse navegador. A prévia visual não usa o banco SQLite da aplicação Flask.
 
-Prévia online: https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site
+Site publicado: https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site
+
+## Documentação
+
+- `documentacao/Projeto_Cyrex_Suporte.docx` – versão editável.
+- `documentacao/Projeto_Cyrex_Suporte.pdf` – versão para leitura e entrega.
+- `documentacao/Projeto_Cyrex_Suporte.md` – versão fonte.
+- `docs/diagramas/` – fontes DOT e imagens dos diagramas de caso de uso, DER, atividade, classes e cinco sequências.
+
+## Estrutura
+
+- `app.py`: rotas Flask, autenticação, permissões, validação e persistência SQLite.
+- `templates/`: páginas Jinja do sistema Flask.
+- `static/`: estilos responsivos e scripts.
+- `cyrex-preview/`: interface visual interativa do site.
+- `documentacao/`: relatório acadêmico em DOCX, PDF e Markdown.
+- `docs/diagramas/`: diagramas UML e fontes editáveis.
+
+## Segurança
+
+A aplicação usa o servidor de desenvolvimento do Flask para execução local. Antes de disponibilizar para uso real, configure `SCMC_SECRET_KEY`, HTTPS, servidor WSGI, proteção CSRF, limitação de tentativas de login e backups.
