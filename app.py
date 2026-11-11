@@ -481,6 +481,17 @@ def appearance_save():
         flash(str(exc), "error")
     return redirect(url_for("admin"))
 
+@app.post("/admin/appearance/reset-colors")
+@admin_required
+def appearance_reset_colors():
+    db = get_db()
+    colors = {key: value for key, value in DEFAULT_APPEARANCE.items() if key not in ("logo", "banner")}
+    db.executemany("INSERT INTO appearance_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", colors.items())
+    db.commit()
+    log_activity("Restauração das cores padrão", "Sistema", "Cyrex", "Paleta de cores padrão restaurada; logo e banner preservados")
+    flash("Cores padrão restauradas. Logotipo e banner foram mantidos.", "success")
+    return redirect(url_for("admin"))
+
 @app.route("/users")
 @admin_required
 def users():
