@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 import re
 from functools import wraps
-from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -89,6 +89,11 @@ CREATE TABLE IF NOT EXISTS catalog_items (
 CREATE TABLE IF NOT EXISTS appearance_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS cyrex_web_state (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  payload TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
 
@@ -205,7 +210,9 @@ def load_logged_in_user():
     if user_id and g.user is None:
         session.clear()
 
-    public_endpoints = {"login", "logout", "setup", "register", "static"}
+    public_endpoints = {"index", "login", "logout", "setup", "register", "static", "cyrex_web", "api_bootstrap", "api_login", "api_logout", "api_register"}
+    if request.endpoint and request.endpoint.startswith("api_") and request.endpoint not in public_endpoints and g.user is None:
+        return jsonify(error="Faça login para continuar."), 401
     if request.endpoint in public_endpoints:
         if request.endpoint == "setup" and not setup_required():
             return redirect(url_for("login"))
@@ -344,6 +351,149 @@ def run_write(sql, params, success, endpoint, **kwargs):
 
 @app.route("/")
 def index():
+    return send_from_directory(BASE_DIR / "cyrex-preview", "index.html")
+
+@app.get("/web")
+def cyrex_web():
+    return send_from_directory(BASE_DIR / "cyrex-preview", "index.html")
+
+def public_user(row):
+    return {"id": str(row["id"]), "name": row["name"], "email": row["email"], "role": row["role"],
+            "jobTitle": row["job_title"], "sector": row["sector"], "phone": row["phone"],
+            "extension": row["extension"], "active": bool(row["active"])}
+
+@app.get("/api/bootstrap")
+def api_bootstrap():
+    db = get_db()
+    raw = db.execute("SELECT payload FROM cyrex_web_state WHERE id=1").fetchone()
+    import json
+    state = json.loads(raw["payload"]) if raw else {}
+    if "equipment" not in state:
+        state["equipment"] = [{"id":str(r["id"]),"tag":r["asset_tag"],"name":r["category"],"brand":r["brand"],"model":r["model"],"serial":r["serial"],"description":r["description"],"location":r["location"],"status":r["status"]} for r in db.execute("SELECT * FROM equipment ORDER BY id DESC")]
+    if "tickets" not in state:
+        rows=db.execute("SELECT o.*,u.name requester,e.asset_tag,e.category,e.brand,e.model FROM service_orders o JOIN users u ON u.id=o.requester_id JOIN equipment e ON e.id=o.equipment_id ORDER BY o.id DESC").fetchall()
+        tickets=[]
+        for r in rows:
+            responses=db.execute("SELECT * FROM ticket_responses WHERE order_id=? ORDER BY id DESC",(r["id"],)).fetchall()
+            tickets.append({"id":str(r["id"]),"number":r["number"],"title":r["title"],"requester":r["requester"],"requesterId":str(r["requester_id"]),"priority":r["priority"],"status":r["status"],"category":r["category"],"equipmentId":str(r["equipment_id"]),"equipmentLabel":f"{r['asset_tag']} · {r['category']}","description":r["description"],"responses":[{"actor":x["actor_name"],"role":x["actor_role"],"at":x["created_at"],"text":x["response"]} for x in responses]})
+        state["tickets"]=tickets
+    if "catalogs" not in state or not state["catalogs"]:
+        state["catalogs"]={kind:[{"id":str(x["id"]),"name":x["value"]} for x in db.execute("SELECT id,value FROM catalog_items WHERE kind=? ORDER BY value COLLATE NOCASE",(kind,))] for kind in ("types","brands","models","sectors")}
+    state.setdefault("audit", [{"id":str(r["id"]),"at":r["created_at"],"actor":r["actor_name"],"role":r["actor_role"],"action":r["action"],"entity":r["entity"],"record":r["entity_id"],"details":r["details"],"ticketId":r["entity_id"] if r["entity"]=="Chamado" else ""} for r in db.execute("SELECT * FROM activity_log ORDER BY id DESC LIMIT 1000")])
+    state.setdefault("appearance", DEFAULT_APPEARANCE)
+    people = [public_user(x) for x in db.execute("SELECT * FROM users ORDER BY name COLLATE NOCASE")]
+    for person in people:
+        person["sectorId"] = next((x["id"] for x in state["catalogs"]["sectors"] if x["name"].casefold()==person["sector"].casefold()), "")
+    # Seed the web application's effective initial snapshot from the normalized
+    # tables so existing Python records appear in the new interface as well.
+    state["tickets"] = state.get("tickets", [])
+    state["equipment"] = state.get("equipment", [])
+    db.execute("INSERT INTO cyrex_web_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP", (json.dumps(state, ensure_ascii=False),))
+    db.commit()
+    return jsonify(user=public_user(g.user) if g.user else None, people=people, state=state,
+                   setup_required=setup_required())
+
+@app.post("/api/login")
+def api_login():
+    data = request.get_json(silent=True) or {}
+    email = str(data.get("email", "")).strip().lower()
+    user = get_db().execute("SELECT * FROM users WHERE lower(email)=? AND active=1", (email,)).fetchone()
+    if not user or not user["password_hash"] or not check_password_hash(user["password_hash"], str(data.get("password", ""))):
+        return jsonify(error="E-mail ou senha inválidos, ou conta inativa."), 401
+    session.clear(); session["user_id"] = user["id"]
+    return jsonify(user=public_user(user))
+
+@app.post("/api/logout")
+def api_logout():
+    session.clear()
+    return jsonify(ok=True)
+
+@app.post("/api/register")
+def api_register():
+    if setup_required():
+        return jsonify(error="Configure primeiro a conta inicial em /setup."), 400
+    data = request.get_json(silent=True) or {}
+    required = ("name", "email", "jobTitle", "sector", "phone", "extension", "password", "passwordConfirm")
+    if any(not str(data.get(k, "")).strip() for k in required):
+        return jsonify(error="Preencha todos os campos obrigatórios."), 400
+    try:
+        password_pair_valid(str(data["password"]), str(data["passwordConfirm"]))
+        db = get_db(); email = str(data["email"]).strip().lower()
+        db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (str(data["sector"]).strip(),))
+        cur = db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,'Solicitante')",
+            (str(data["name"]).strip(), email, generate_password_hash(data["password"]), str(data["jobTitle"]).strip(), str(data["sector"]).strip(), str(data["phone"]).strip(), str(data["extension"]).strip()))
+        db.commit(); user = db.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
+        log_activity("Auto cadastro de solicitante", "Pessoa", user["id"], f"Setor: {user['sector']} · Função: {user['job_title']}", actor=user)
+        session.clear(); session["user_id"] = user["id"]
+        return jsonify(user=public_user(user))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    except sqlite3.IntegrityError:
+        get_db().rollback(); return jsonify(error="Esse e-mail já possui cadastro."), 409
+
+@app.route("/api/people", methods=["POST", "PUT"])
+@admin_required
+def api_people():
+    data = request.get_json(silent=True) or {}; db = get_db()
+    name=str(data.get("name","")).strip(); email=str(data.get("email","")).strip().lower()
+    role=str(data.get("role","Solicitante")); job=str(data.get("jobTitle","")).strip(); sector=str(data.get("sector","")).strip()
+    phone=str(data.get("phone","")).strip(); extension=str(data.get("extension","")).strip(); password=str(data.get("password", ""))
+    if not all((name,email,job,sector,phone,extension)) or role not in ("Administrador","Técnico","Solicitante"):
+        return jsonify(error="Revise os campos obrigatórios e o perfil."), 400
+    try:
+        if request.method == "POST":
+            password_pair_valid(password, password)
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (sector,))
+            cur=db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,?)", (name,email,generate_password_hash(password),job,sector,phone,extension,role)); uid=cur.lastrowid
+        else:
+            uid=int(data.get("id",0)); old=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+            if not old: return jsonify(error="Pessoa não encontrada."),404
+            if old["role"]=="Administrador" and old["active"] and role!="Administrador" and db.execute("SELECT COUNT(*) FROM users WHERE role='Administrador' AND active=1").fetchone()[0]<=1: return jsonify(error="Mantenha pelo menos um administrador ativo."),400
+            if password: password_pair_valid(password,password)
+            db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (sector,))
+            db.execute("UPDATE users SET name=?,email=?,job_title=?,sector=?,phone=?,extension=?,role=? WHERE id=?",(name,email,job,sector,phone,extension,role,uid))
+            if password: db.execute("UPDATE users SET password_hash=? WHERE id=?",(generate_password_hash(password),uid))
+        db.commit(); row=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+        log_activity("Cadastro de usuário" if request.method=="POST" else "Edição de usuário","Pessoa",uid,f"Perfil: {role} · Setor: {sector}")
+        return jsonify(person=public_user(row))
+    except (ValueError, sqlite3.IntegrityError) as exc:
+        db.rollback(); return jsonify(error=str(exc) if isinstance(exc,ValueError) else "Esse e-mail já está cadastrado."),400
+
+@app.post("/api/people/<int:user_id>/inactivate")
+@admin_required
+def api_inactivate_person(user_id):
+    db=get_db(); row=db.execute("SELECT * FROM users WHERE id=?",(user_id,)).fetchone()
+    if not row: return jsonify(error="Pessoa não encontrada."),404
+    if row["id"]==g.user["id"]: return jsonify(error="Você não pode inativar sua própria conta."),400
+    if row["role"]=="Administrador" and db.execute("SELECT COUNT(*) FROM users WHERE role='Administrador' AND active=1").fetchone()[0]<=1: return jsonify(error="Mantenha pelo menos um administrador ativo."),400
+    db.execute("UPDATE users SET active=0 WHERE id=?",(user_id,)); db.commit()
+    log_activity("Inativação de usuário","Pessoa",user_id,row["name"])
+    return jsonify(ok=True)
+
+@app.route("/api/state", methods=["POST"])
+def api_save_state():
+    if g.user is None: return jsonify(error="Faça login para continuar."),401
+    data=request.get_json(silent=True) or {}; role=g.user["role"]
+    if role not in ("Administrador","Técnico","Solicitante"): return jsonify(error="Perfil inválido."),403
+    allowed={"tickets","equipment","catalogs","audit","appearance"}
+    if set(data)-allowed: return jsonify(error="Dados inválidos."),400
+    db=get_db(); current=db.execute("SELECT payload FROM cyrex_web_state WHERE id=1").fetchone()
+    import json
+    old=json.loads(current["payload"]) if current else {}
+    if role!="Administrador":
+        for key in ("equipment","catalogs","appearance"):
+            if key in data and data[key]!=old.get(key, data[key] if key=="catalogs" else None):
+                return jsonify(error="Somente Administrador pode alterar inventário, cadastros e aparência."),403
+        if role=="Solicitante" and "tickets" in data:
+            old_tickets=old.get("tickets",[]); new_tickets=data["tickets"]
+            old_map={str(t.get("id")):t for t in old_tickets}; new_map={str(t.get("id")):t for t in new_tickets}
+            if any(key not in new_map or new_map[key]!=ticket for key,ticket in old_map.items()): return jsonify(error="Solicitante não pode alterar ou excluir chamados existentes."),403
+            if any(key not in old_map and str(ticket.get("requesterId"))!=str(g.user["id"]) for key,ticket in new_map.items()): return jsonify(error="Solicitante só pode abrir chamados em seu nome."),403
+    merged={**old,**data}; db.execute("INSERT INTO cyrex_web_state(id,payload,updated_at) VALUES(1,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=CURRENT_TIMESTAMP",(json.dumps(merged,ensure_ascii=False),)); db.commit()
+    return jsonify(ok=True)
+
+@app.route("/legacy-dashboard")
+def legacy_dashboard():
     db = get_db()
     requester_filter = " AND requester_id=?" if g.user["role"] == "Solicitante" else ""
     query_args = (g.user["id"],) if requester_filter else ()

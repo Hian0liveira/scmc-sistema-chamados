@@ -2,7 +2,7 @@
 
 Repositório completo do projeto acadêmico de controle de chamados e equipamentos. Contém a implementação Python/Flask com banco SQLite, a documentação e a prévia interativa Cyrex refinada durante o trabalho no site.
 
-## Executar a aplicação Flask com SQLite
+## Executar o Cyrex Web com Flask e SQLite
 
 Requisitos: Python 3.10 ou superior.
 
@@ -21,7 +21,7 @@ Se o comando `python` não apontar para a instalação correta, use o caminho co
 & 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' app.py
 ```
 
-Acesse http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Administrador. O banco SQLite `scmc.db` será criado localmente e não deve ser versionado.
+Acesse http://127.0.0.1:5000. A interface visual do Cyrex é servida pelo Flask. Na primeira execução, crie a conta inicial de Administrador em `/setup`; depois, entre pela tela de login do Cyrex. O banco SQLite `scmc.db` é criado localmente. Chamados, equipamentos, catálogos, aparência, auditoria e contas ficam no servidor; as senhas são armazenadas com hash. O cadastro público cria somente perfil Solicitante.
 
 ## Perfis e regras
 
@@ -34,11 +34,11 @@ Acesse http://127.0.0.1:5000. Na primeira execução, crie a conta inicial de Ad
 - Painel Admin com gerenciamento dos quatro cadastros, personalização de logo, banner e cores (com botão para restaurar somente as cores) e pesquisa em chamados, equipamentos e pessoas.
 - Chamados mantêm status, prioridade, solução, respostas e histórico de atividade.
 
-## Prévia visual do site
+## Interface Web
 
-`cyrex-preview/index.html` contém a interface interativa do site Cyrex trabalhada durante o desenvolvimento. Ela pode ser aberta no navegador e seus dados ficam no armazenamento local desse navegador. A prévia visual não usa o banco SQLite da aplicação Flask.
+`cyrex-preview/index.html` é a interface web integrada à aplicação Flask. O login, cadastro público de solicitantes, gerenciamento de pessoas, inventário, chamados, catálogos, auditoria e aparência usam a API Flask. Os dados são persistidos no SQLite local em `scmc.db`; o navegador não é a fonte principal dos dados.
 
-Site publicado: https://scmc-central-suporte-preview.peppybamboo8.chatgpt.site
+A interface está preparada para celular e desktop. Para usá-la em outra máquina, publique o servidor Flask em uma hospedagem Python com banco persistente e configure a chave `SCMC_SECRET_KEY`.
 
 ## Documentação
 
