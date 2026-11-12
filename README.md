@@ -17,11 +17,11 @@ python app.py
 Se o comando `python` não apontar para a instalação correta, use o caminho completo do executável:
 
 ```powershell
-& 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' -m pip install -r requirements.txt
-& 'C:\Users\Walter\AppData\Local\Python\pythoncore-3.15-64\python.exe' app.py
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-Acesse http://127.0.0.1:5000. A interface visual do Cyrex é servida pelo Flask. Na primeira execução, crie a conta inicial de Administrador em `/setup`; depois, entre pela tela de login do Cyrex. O banco SQLite `scmc.db` é criado localmente. Chamados, equipamentos, catálogos, aparência, auditoria e contas ficam no servidor; as senhas são armazenadas com hash. O cadastro público cria somente perfil Solicitante.
+Acesse http://127.0.0.1:5000. A interface visual do Cyrex é servida pelo Flask. Na primeira execução, crie a conta inicial de Administrador em `/setup`; depois, entre pela tela de login do Cyrex. O banco SQLite de demonstração já vem em `database/cyrex_demo.db` e é usado pelo sistema. Ele contém registros de exemplo de pessoas, equipamentos, chamados, cadastros e auditoria. Na primeira execução, configure seu próprio administrador em `/setup`; o registro de demonstração vazio é reaproveitado e você define a senha. O banco e os dados ficam no arquivo SQLite; as senhas reais são armazenadas com hash. O cadastro público cria somente perfil Solicitante.
 
 ## Perfis e regras
 
@@ -36,7 +36,7 @@ Acesse http://127.0.0.1:5000. A interface visual do Cyrex é servida pelo Flask.
 
 ## Interface Web
 
-`cyrex-preview/index.html` é a interface web integrada à aplicação Flask. O login, cadastro público de solicitantes, gerenciamento de pessoas, inventário, chamados, catálogos, auditoria e aparência usam a API Flask. Os dados são persistidos no SQLite local em `scmc.db`; o navegador não é a fonte principal dos dados.
+`cyrex-preview/index.html` é a interface web integrada à aplicação Flask. O login, cadastro público de solicitantes, gerenciamento de pessoas, inventário, chamados, catálogos, auditoria e aparência usam a API Flask. Os dados são persistidos no SQLite `database/cyrex_demo.db`; o navegador não é a fonte principal dos dados.
 
 A interface está preparada para celular e desktop. Para usá-la em outra máquina, publique o servidor Flask em uma hospedagem Python com banco persistente e configure a chave `SCMC_SECRET_KEY`.
 
@@ -50,6 +50,7 @@ A interface está preparada para celular e desktop. Para usá-la em outra máqui
 ## Estrutura
 
 - `app.py`: rotas Flask, autenticação, permissões, validação e persistência SQLite.
+- `database/cyrex_demo.db`: banco SQLite incluído, com dados de demonstração e relacionamentos entre as tabelas.
 - `templates/`: páginas Jinja do sistema Flask.
 - `static/`: estilos responsivos e scripts.
 - `cyrex-preview/`: interface visual interativa do site.
