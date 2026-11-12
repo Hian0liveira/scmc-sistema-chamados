@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE = BASE_DIR / "scmc.db"
+DATABASE = Path(os.environ.get("SCMC_DATABASE_PATH", BASE_DIR / "database" / "cyrex_demo.db"))
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SCMC_SECRET_KEY") or secrets.token_hex(32)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -125,6 +125,7 @@ def close_db(_error=None):
         db.close()
 
 def init_db():
+    DATABASE.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DATABASE)
     db.execute("PRAGMA foreign_keys = ON")
     db.executescript(SCHEMA)
@@ -178,8 +179,54 @@ def init_db():
         db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (row[0],))
     for key, value in DEFAULT_APPEARANCE.items():
         db.execute("INSERT OR IGNORE INTO appearance_settings(key,value) VALUES(?,?)", (key, value))
+    if (db.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+            and db.execute("SELECT COUNT(*) FROM equipment").fetchone()[0] == 0
+            and db.execute("SELECT COUNT(*) FROM service_orders").fetchone()[0] == 0):
+        seed_demo_database(db)
     db.commit()
     db.close()
+
+def seed_demo_database(db):
+    """Create a presentable sample database matching the Cyrex web preview."""
+    people = [
+        (1,"Solicitante 01","solicitante01@example.com","Analista administrativa","Administrativo","0000-0001","101","Solicitante"),
+        (2,"Solicitante 02","solicitante02@example.com","Analista financeiro","Financeiro","0000-0002","202","Solicitante"),
+        (3,"Técnico 01","tecnico01@example.com","Técnico de suporte","TI","0000-0003","303","Técnico"),
+        (4,"Solicitante 03","solicitante03@example.com","Assistente financeira","Financeiro","0000-0004","204","Solicitante"),
+        (5,"Técnico 02","tecnico02@example.com","Técnico de suporte","TI","0000-0005","305","Técnico"),
+        (6,"Administrador de demonstração","admin@scmc.local","Administrador do sistema","TI","0000-0000","300","Administrador"),
+        (7,"Solicitante 04","solicitante04@example.com","Analista de sistemas","Recursos Humanos","0000-0006","106","Solicitante"),
+        (8,"Solicitante 05","solicitante05@example.com","Analista de treinamento","TI","0000-0007","307","Solicitante"),
+    ]
+    db.executemany("""INSERT INTO users(id,name,email,password_hash,job_title,sector,phone,extension,role,active)
+        VALUES(?,?,?,'',?,?,?,?,?,1)""", people)
+    catalog_values = {
+        "types": ("Notebook","Desktop","Impressora","Monitor","Servidor","Switch"),
+        "brands": ("Dell","Lenovo","HP"),
+        "models": ("Dell Latitude 5440","Lenovo ThinkCentre M70","HP LaserJet Pro M404","Dell Latitude 5420"),
+        "sectors": ("Administrativo","Financeiro","Recursos Humanos","TI"),
+    }
+    for kind, values in catalog_values.items():
+        db.executemany("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES(?,?)", ((kind, value) for value in values))
+    equipment = [
+        (1,"TI-0421","Notebook","Dell","Latitude 5440","","Notebook de uso administrativo","Administrativo","Ativo"),
+        (2,"TI-0398","Desktop","Lenovo","ThinkCentre M70","","Computador do setor financeiro","Financeiro","Ativo"),
+        (3,"TI-0312","Impressora","HP","LaserJet Pro M404","","Impressora compartilhada do financeiro","Financeiro","Em manutenção"),
+        (4,"TI-0287","Notebook","Dell","Latitude 5420","","Notebook de Recursos Humanos","Recursos Humanos","Ativo"),
+    ]
+    db.executemany("""INSERT INTO equipment(id,asset_tag,category,brand,model,serial,description,location,status)
+        VALUES(?,?,?,?,?,?,?,?,?)""", equipment)
+    tickets = [
+        (1,"SC-1048","Notebook reiniciando durante reuniões","O notebook reinicia após alguns minutos de reunião. O problema começou hoje.","Alta","Em atendimento","2026-11-10T09:42","2026-11-10T10:10",None,"",1,3,1),
+        (2,"SC-1047","Acesso ao sistema de chamados","O sistema informa erro de acesso ao tentar entrar com as credenciais corporativas.","Média","Aberta","2026-11-10T08:16","2026-11-10T08:16",None,"",2,None,2),
+        (3,"SC-1046","Impressora do financeiro sem conexão","A impressora aparece desconectada para os usuários do setor financeiro.","Crítica","Aguardando","2026-11-09T16:38","2026-11-10T08:20",None,"Aguardando verificação da conexão de rede.",4,3,3),
+        (4,"SC-1045","Atualização do pacote de escritório","Solicitação de atualização do pacote de escritório para a versão aprovada pela empresa.","Baixa","Concluída","2026-11-09T14:05","2026-11-09T15:12","2026-11-09T15:12","Pacote atualizado e funcionamento conferido com a solicitante.",7,3,4),
+        (5,"SC-1044","Rede instável na sala de treinamento","A conexão de rede oscila durante as atividades na sala de treinamento.","Alta","Aberta","2026-11-09T11:20","2026-11-09T11:20",None,"",8,None,2),
+    ]
+    db.executemany("""INSERT INTO service_orders(id,number,title,description,priority,status,opened_at,updated_at,closed_at,solution,requester_id,technician_id,equipment_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", tickets)
+    db.execute("INSERT INTO activity_log(actor_id,actor_name,actor_role,action,entity,entity_id,details,created_at) VALUES(6,'Administrador SCMC','Administrador','Alteração de status','Chamado','1','Status: Aberta → Em atendimento','2026-11-10T10:10:00')")
+    db.execute("INSERT INTO activity_log(actor_id,actor_name,actor_role,action,entity,entity_id,details,created_at) VALUES(3,'Técnico 01','Técnico','Registro de atendimento','Chamado','1','Chamado assumido para análise técnica.','2026-11-10T10:10:00')")
 
 init_db()
 
@@ -272,9 +319,13 @@ def setup():
             email = v["email"].lower()
             db.execute("INSERT OR IGNORE INTO catalog_items(kind,value) VALUES('sectors',?)", (v["sector"],))
             existing = db.execute("SELECT id FROM users WHERE lower(email)=?", (email,)).fetchone()
+            # Reuse the blank-password Admin placeholder in the downloadable
+            # demo database, so initial setup does not leave a ghost account.
+            if not existing:
+                existing = db.execute("SELECT id FROM users WHERE lower(email)='admin@scmc.local' AND password_hash='' AND role='Administrador' LIMIT 1").fetchone()
             if existing:
-                db.execute("UPDATE users SET name=?,password_hash=?,job_title=?,sector=?,phone=?,extension=?,role='Administrador',active=1 WHERE id=?",
-                           (v["name"], generate_password_hash(password), v["job_title"], v["sector"], v["phone"], v["extension"], existing["id"]))
+                db.execute("UPDATE users SET name=?,email=?,password_hash=?,job_title=?,sector=?,phone=?,extension=?,role='Administrador',active=1 WHERE id=?",
+                           (v["name"], email, generate_password_hash(password), v["job_title"], v["sector"], v["phone"], v["extension"], existing["id"]))
             else:
                 db.execute("INSERT INTO users(name,email,password_hash,job_title,sector,phone,extension,role) VALUES(?,?,?,?,?,?,?,'Administrador')",
                            (v["name"], email, generate_password_hash(password), v["job_title"], v["sector"], v["phone"], v["extension"]))
@@ -379,6 +430,10 @@ def api_bootstrap():
         state["tickets"]=tickets
     if "catalogs" not in state or not state["catalogs"]:
         state["catalogs"]={kind:[{"id":str(x["id"]),"name":x["value"]} for x in db.execute("SELECT id,value FROM catalog_items WHERE kind=? ORDER BY value COLLATE NOCASE",(kind,))] for kind in ("types","brands","models","sectors")}
+    for model in state["catalogs"].get("models", []):
+        if not model.get("brandId"):
+            match=next((b for b in state["catalogs"].get("brands", []) if model["name"].casefold().startswith(b["name"].casefold()+" ")),None)
+            if match: model["brandId"]=match["id"]
     state.setdefault("audit", [{"id":str(r["id"]),"at":r["created_at"],"actor":r["actor_name"],"role":r["actor_role"],"action":r["action"],"entity":r["entity"],"record":r["entity_id"],"details":r["details"],"ticketId":r["entity_id"] if r["entity"]=="Chamado" else ""} for r in db.execute("SELECT * FROM activity_log ORDER BY id DESC LIMIT 1000")])
     state.setdefault("appearance", DEFAULT_APPEARANCE)
     people = [public_user(x) for x in db.execute("SELECT * FROM users ORDER BY name COLLATE NOCASE")]
