@@ -353,7 +353,7 @@ def reset_password(token):
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     now_text = datetime.now(timezone.utc).isoformat(timespec="seconds")
     db = get_db()
-    reset = db.execute("""SELECT t.id,t.user_id,u.email FROM password_reset_tokens t
+    reset = db.execute("""SELECT t.id AS reset_id,t.user_id,u.* FROM password_reset_tokens t
                          JOIN users u ON u.id=t.user_id
                          WHERE t.token_hash=? AND t.used_at IS NULL AND t.expires_at>? AND u.active=1""",
                        (token_hash, now_text)).fetchone()
@@ -365,10 +365,10 @@ def reset_password(token):
         try:
             password_pair_valid(password, request.form.get("confirm_password", ""))
             db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(password), reset["user_id"]))
-            db.execute("UPDATE password_reset_tokens SET used_at=? WHERE id=?", (now_text, reset["id"]))
-            db.execute("DELETE FROM password_reset_tokens WHERE user_id=? AND id!=?", (reset["user_id"], reset["id"]))
+            db.execute("UPDATE password_reset_tokens SET used_at=? WHERE id=?", (now_text, reset["reset_id"]))
+            db.execute("DELETE FROM password_reset_tokens WHERE user_id=? AND id!=?", (reset["user_id"], reset["reset_id"]))
             db.commit()
-            log_activity("Redefinição de senha", "Pessoa", reset["user_id"], "Senha redefinida por link de recuperação")
+            log_activity("Redefinição de senha", "Pessoa", reset["user_id"], "Senha redefinida por link de recuperação", actor=reset)
             flash("Senha redefinida. Entre com sua nova senha.", "success")
             return redirect(url_for("login"))
         except ValueError as exc:
