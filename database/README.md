@@ -16,6 +16,7 @@ Use um visualizador de SQLite, como DB Browser for SQLite, e abra `cyrex_demo.db
 - `equipment`: inventário, patrimônio, marca, modelo, série e localização.
 - `service_orders`: chamados, prioridade, status e vínculos com solicitante, técnico e equipamento.
 - `ticket_responses`: respostas registradas nos chamados.
+- `password_reset_tokens`: hashes de tokens de redefinição, com expiração e uso único.
 - `activity_log`: trilha de auditoria.
 - `catalog_items`: tipos, marcas, modelos e setores.
 - `appearance_settings`: identidade visual.
