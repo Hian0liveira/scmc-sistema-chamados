@@ -1,9 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+import hashlib
 import os
 from pathlib import Path
 import secrets
 import sqlite3
 import re
+import smtplib
+import ssl
 from functools import wraps
 from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory
 from werkzeug.utils import secure_filename
@@ -31,6 +35,14 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK(role IN ('Administrador','Técnico','Solicitante')),
   active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS equipment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,7 +269,7 @@ def load_logged_in_user():
     if user_id and g.user is None:
         session.clear()
 
-    public_endpoints = {"index", "login", "logout", "setup", "register", "static", "cyrex_web", "api_bootstrap", "api_login", "api_logout", "api_register"}
+    public_endpoints = {"index", "login", "logout", "setup", "register", "forgot_password", "reset_password", "static", "cyrex_web", "api_bootstrap", "api_login", "api_logout", "api_register"}
     if request.endpoint and request.endpoint.startswith("api_") and request.endpoint not in public_endpoints and g.user is None:
         return jsonify(error="Faça login para continuar."), 401
     if request.endpoint in public_endpoints:
@@ -282,6 +294,86 @@ def password_pair_valid(password, confirmation):
         raise ValueError("A senha deve ter pelo menos 8 caracteres.")
     if password != confirmation:
         raise ValueError("As senhas não coincidem.")
+
+def send_password_reset_email(recipient, reset_url):
+    """Send a reset link when SMTP is configured; otherwise expose it only in local logs."""
+    smtp_host = os.environ.get("SCMC_SMTP_HOST", "").strip()
+    if not smtp_host:
+        app.logger.warning("SMTP não configurado. Link local de redefinição: %s", reset_url)
+        return
+
+    message = EmailMessage()
+    message["Subject"] = "Redefinição de senha do Cyrex Suporte"
+    message["From"] = os.environ.get("SCMC_SMTP_FROM") or os.environ.get("SCMC_SMTP_USERNAME", "")
+    message["To"] = recipient
+    message.set_content(
+        "Recebemos uma solicitação para redefinir sua senha do Cyrex Suporte.\n\n"
+        f"Acesse este link em até 30 minutos: {reset_url}\n\n"
+        "Se você não solicitou a redefinição, ignore esta mensagem."
+    )
+    port = int(os.environ.get("SCMC_SMTP_PORT", "587"))
+    with smtplib.SMTP(smtp_host, port, timeout=20) as server:
+        server.ehlo()
+        server.starttls(context=ssl.create_default_context())
+        username = os.environ.get("SCMC_SMTP_USERNAME", "")
+        password = os.environ.get("SCMC_SMTP_PASSWORD", "")
+        if username:
+            server.login(username, password)
+        server.send_message(message)
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if g.user:
+        return redirect(url_for("index"))
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        db = get_db()
+        now = datetime.now(timezone.utc)
+        now_text = now.isoformat(timespec="seconds")
+        db.execute("DELETE FROM password_reset_tokens WHERE used_at IS NOT NULL OR expires_at<=?", (now_text,))
+        user = db.execute("SELECT id,email FROM users WHERE lower(email)=? AND active=1", (email,)).fetchone()
+        if user:
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            expires_at = (now + timedelta(minutes=30)).isoformat(timespec="seconds")
+            db.execute("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,created_at) VALUES(?,?,?,?)",
+                       (user["id"], token_hash, expires_at, now_text))
+            db.commit()
+            reset_url = url_for("reset_password", token=token, _external=True)
+            try:
+                send_password_reset_email(user["email"], reset_url)
+            except (OSError, smtplib.SMTPException, ValueError):
+                app.logger.exception("Falha ao enviar e-mail de redefinição do Cyrex.")
+        flash("Se houver uma conta ativa com esse e-mail, as instruções de redefinição foram enviadas.", "success")
+        return redirect(url_for("forgot_password"))
+    return render_template("forgot_password.html", reset_token=None)
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now_text = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    db = get_db()
+    reset = db.execute("""SELECT t.id,t.user_id,u.email FROM password_reset_tokens t
+                         JOIN users u ON u.id=t.user_id
+                         WHERE t.token_hash=? AND t.used_at IS NULL AND t.expires_at>? AND u.active=1""",
+                       (token_hash, now_text)).fetchone()
+    if not reset:
+        flash("Este link é inválido ou expirou. Solicite uma nova redefinição.", "error")
+        return redirect(url_for("forgot_password"))
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        try:
+            password_pair_valid(password, request.form.get("confirm_password", ""))
+            db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(password), reset["user_id"]))
+            db.execute("UPDATE password_reset_tokens SET used_at=? WHERE id=?", (now_text, reset["id"]))
+            db.execute("DELETE FROM password_reset_tokens WHERE user_id=? AND id!=?", (reset["user_id"], reset["id"]))
+            db.commit()
+            log_activity("Redefinição de senha", "Pessoa", reset["user_id"], "Senha redefinida por link de recuperação")
+            flash("Senha redefinida. Entre com sua nova senha.", "success")
+            return redirect(url_for("login"))
+        except ValueError as exc:
+            flash(str(exc), "error")
+    return render_template("forgot_password.html", reset_token=token)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
