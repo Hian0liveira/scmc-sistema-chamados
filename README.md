@@ -60,3 +60,7 @@ A interface está preparada para celular e desktop. Para usá-la em outra máqui
 ## Segurança
 
 A aplicação usa o servidor de desenvolvimento do Flask para execução local. Antes de disponibilizar para uso real, configure `SCMC_SECRET_KEY`, HTTPS, servidor WSGI, proteção CSRF, limitação de tentativas de login e backups.
+
+## Recuperação de senha
+
+A tela de login oferece **Esqueci minha senha**. O link de redefinição é único, expira em 30 minutos e pode ser usado uma vez. Para envio real por e-mail, configure `SCMC_SMTP_HOST`, `SCMC_SMTP_PORT`, `SCMC_SMTP_USERNAME`, `SCMC_SMTP_PASSWORD` e `SCMC_SMTP_FROM`. Em execução local sem SMTP, o link aparece somente no terminal onde `python app.py` está rodando.
